@@ -21,8 +21,9 @@ with st.sidebar:
 # CARGA DE ARCHIVOS
 col1, col2 = st.columns(2)
 with col1:
-    audio_file = st.file_upload("Subir Audio o Video (Conversación)", type=["mp3", "mp4", "wav", "m4a"])
-    excel_file = st.file_upload("Subir Planilla Excel (Costos/Ingresos)", type=["xlsx"])
+    # AQUÍ ESTABA EL ERROR: debe ser file_uploader
+    audio_file = st.file_uploader("Subir Audio o Video (Conversación)", type=["mp3", "mp4", "wav", "m4a"])
+    excel_file = st.file_uploader("Subir Planilla Excel (Costos/Ingresos)", type=["xlsx"])
 with col2:
     texto_extra = st.text_area("Notas adicionales o transcripción manual", placeholder="Pega aquí puntos clave que no estén en los archivos...")
 
@@ -34,45 +35,34 @@ if st.button("✨ GENERAR PRESENTACIÓN"):
         openai.api_key = api_key
         with st.spinner("Analizando datos y diseñando diapositivas..."):
             
-            # 1. Procesar Audio (si existe)
-            transcripcion = ""
-            if audio_file:
-                # Aquí se llamaría a Whisper API
-                transcripcion = "Datos extraídos del audio (Simulado)..."
-
-            # 2. Análisis con IA
-            prompt = f"""
-            Analiza este proyecto de {tipo_negocio}. 
-            Datos: {texto_extra} {transcripcion}
-            Devuelve un JSON con: Título, Introducción, Público Objetivo, 
-            Inversión Inicial, Flujo Mensual (Moneda local y USD), 
-            Beneficios Fiscales en Uruguay, ROTE, ROI y Punto de Equilibrio.
-            Sugiere una paleta de colores {estilo_visual}.
-            """
-            # Aquí llamamos a GPT-4o
-            # (Simulamos respuesta para el ejemplo)
+            # 1. Simulación de procesamiento
+            # En una versión avanzada aquí iría la conexión real con GPT-4 y Whisper
             res = {
-                "titulo": "Reciclaje Vilardebó 1658",
-                "kpis": {"ROTE": "38.3%", "Punto Equilibrio": "4.3 unidades", "Inversión": "USD 426k"},
-                "color_hex": (44, 62, 80) # Azul medianoche
+                "titulo": "Propuesta de Inversión",
+                "kpis": {"Rentabilidad": "Alta", "Riesgo": "Controlado", "Mercado": "Creciente"},
             }
 
-            # 3. CREAR POWERPOINT
+            # 2. CREAR POWERPOINT
             prs = Presentation()
             
             # Diapositiva 1: Portada
             slide = prs.slides.add_slide(prs.slide_layouts[0])
-            slide.shapes.title.text = res["titulo"]
-            slide.placeholders[1].text = "Propuesta de Inversión Estratégica"
+            slide.shapes.title.text = "PROYECTO: " + tipo_negocio
+            slide.placeholders[1].text = "Análisis Estratégico para Inversores"
             
             # Diapositiva 2: KPIs
             slide = prs.slides.add_slide(prs.slide_layouts[5])
-            slide.shapes.title.text = "Métricas de Rentabilidad"
+            slide.shapes.title.text = "Métricas Principales"
             rows, cols = 4, 2
             table = slide.shapes.add_table(rows, cols, Inches(1), Inches(2), Inches(8), Inches(2)).table
-            for i, (k, v) in enumerate(res["kpis"].items()):
-                table.cell(i, 0).text = k
-                table.cell(i, 1).text = str(v)
+            
+            # Rellenar con datos básicos
+            table.cell(0, 0).text = "Concepto"
+            table.cell(0, 1).text = "Detalle"
+            table.cell(1, 0).text = "Tipo de Negocio"
+            table.cell(1, 1).text = tipo_negocio
+            table.cell(2, 0).text = "Estilo Visual"
+            table.cell(2, 1).text = estilo_visual
 
             # GUARDAR Y DESCARGAR
             pptx_io = io.BytesIO()
@@ -83,6 +73,6 @@ if st.button("✨ GENERAR PRESENTACIÓN"):
             st.download_button(
                 label="📥 Descargar PowerPoint",
                 data=pptx_io,
-                file_name="Propuesta_Inversion.pptx",
+                file_name="Propuesta_Comercial.pptx",
                 mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            )
+            
