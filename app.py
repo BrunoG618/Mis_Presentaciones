@@ -3,126 +3,153 @@ import pandas as pd
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
 import io
 from docx import Document
 import openai
 
-# --- CONFIGURACIÓN ESTÉTICA ---
-COLOR_FONDO = RGBColor(240, 242, 246)
-COLOR_TEXTO = RGBColor(44, 62, 80)
-COLOR_ACENTO = RGBColor(31, 119, 180)
-
-st.set_page_config(page_title="Generador Pro Inversiones", layout="wide")
-st.title("🏆 Presentaciones Comerciales de Alto Impacto")
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="Fábrica de Inversiones Pro", layout="wide")
+st.title("🚀 Presentaciones Comerciales Multimodales")
+st.write("Sube audios de reuniones, Excels financieros o documentos Word para generar tu propuesta.")
 
 # --- BARRA LATERAL ---
 with st.sidebar:
-    st.header("Configuración de Marca")
+    st.header("Configuración")
     api_key = st.text_input("Introduce tu OpenAI API Key", type="password")
-    tipo_negocio = st.selectbox("Sector", ["Reciclaje Inmobiliario", "Retail", "Gastronomía", "Tech"])
-    estilo = st.selectbox("Mood de la Presentación", ["Industrial/Arquitectura", "Corporativo/Serio", "Moderno/Limpio"])
+    tipo_negocio = st.selectbox("Sector del Proyecto", ["Reciclaje Inmobiliario", "Retail", "Gastronomía", "Tecnología", "Otro"])
+    st.divider()
+    st.info("Esta herramienta usa Whisper para audio, Pandas para Excel y GPT-4o para el diseño de la presentación.")
 
-# --- FUNCIONES DE APOYO ---
-def configurar_slide(slide, titulo_texto):
-    """Aplica diseño visual al slide"""
-    background = slide.background
-    fill = background.fill
-    fill.solid()
-    fill.foreground_color.rgb = RGBColor(255, 255, 255)
-    
-    title = slide.shapes.title
-    title.text = titulo_texto
-    title_para = title.text_frame.paragraphs[0]
-    title_para.font.bold = True
-    title_para.font.size = Pt(32)
-    title_para.font.color.rgb = COLOR_ACENTO
+# --- FUNCIONES DE PROCESAMIENTO ---
 
 def extraer_texto_word(file):
     doc = Document(file)
     return "\n".join([p.text for p in doc.paragraphs])
 
-# --- INTERFAZ ---
-col1, col2 = st.columns(2)
+def procesar_excel(file):
+    df = pd.read_excel(file)
+    # Convertimos el resumen del excel a texto para que la IA lo entienda
+    return f"Resumen de Excel: {df.to_string()}"
+
+def transcribir_audio(file, key):
+    openai.api_key = key
+    # Guardamos temporalmente el archivo para enviarlo a Whisper
+    transcription = openai.audio.transcriptions.create(
+        model="whisper-1", 
+        file=file
+    )
+    return transcription.text
+
+def configurar_slide(slide, titulo_texto):
+    title = slide.shapes.title
+    title.text = titulo_texto
+    title_para = title.text_frame.paragraphs[0]
+    title_para.font.bold = True
+    title_para.font.size = Pt(30)
+    title_para.font.color.rgb = RGBColor(31, 119, 180)
+
+# --- INTERFAZ DE CARGA (3 COLUMNAS) ---
+col1, col2, col3 = st.columns(3)
+
 with col1:
-    documento = st.file_uploader("Subir Documento (Word/TXT)", type=["docx", "txt"])
+    st.subheader("📄 Documentos")
+    doc_file = st.file_uploader("Subir Word o Texto", type=["docx", "txt"])
+    excel_file = st.file_uploader("Subir Planilla Excel", type=["xlsx"])
+
 with col2:
-    notas = st.text_area("Notas o Transcripción Manual:", height=150)
+    st.subheader("🎙️ Multimedia")
+    audio_file = st.file_uploader("Subir Audio o Video de la charla", type=["mp3", "mp4", "wav", "m4a"])
 
-# --- PROMPT AVANZADO ---
-if st.button("🚀 GENERAR PRESENTACIÓN EJECUTIVA"):
+with col3:
+    st.subheader("✍️ Notas")
+    notas = st.text_area("Notas manuales o transcripción:", height=200)
+
+# --- BOTÓN DE ACCIÓN ---
+if st.button("🔥 GENERAR PRESENTACIÓN COMPLETA"):
     if not api_key:
-        st.error("Falta la API Key")
-    elif not documento and not notas:
-        st.warning("Sin datos para analizar")
+        st.error("Por favor, introduce tu API Key.")
     else:
-        with st.spinner("Analizando proyecto y diseñando propuesta visual..."):
-            openai.api_key = api_key
-            texto_final = (notas if notas else "") + (extraer_texto_word(documento) if documento else "")
+        openai.api_key = api_key
+        with st.spinner("Procesando archivos y analizando rentabilidad..."):
             
-            prompt = f"""
-            Actúa como un Senior Business Analyst. Analiza este proyecto de {tipo_negocio} en Uruguay.
-            DATOS: {texto_final}
-            
-            Genera el contenido para 7 diapositivas. Para cada una, usa este formato exacto:
-            SLIDE 1: [Título] | [Contenido detallado]
-            SLIDE 2: [Título] | [Contenido detallado]
-            ...etc.
-
-            Estructura obligatoria:
-            1. Portada Impactante.
-            2. Resumen Ejecutivo (Visión y Oportunidad).
-            3. Análisis de Mercado y Ubicación (detallar Reducto/Goes si aplica).
-            4. Cuadro Financiero Detallado (Inversión inicial vs Ventas esperadas).
-            5. Rentabilidad y KPIs (ROTE, ROI, Punto de Equilibrio, Cost to Income).
-            6. Beneficios Fiscales (Vivienda Promovida/COMAP con exoneraciones específicas).
-            7. Conclusión y Próximos Pasos.
-            
-            Usa un tono profesional, persuasivo y muy orientado a números.
-            """
-
             try:
+                # 1. Recolectar información de todas las fuentes
+                contexto_total = f"Tipo de Negocio: {tipo_negocio}\n"
+                
+                if notas:
+                    contexto_total += f"Notas: {notas}\n"
+                
+                if doc_file:
+                    if doc_file.name.endswith(".docx"):
+                        contexto_total += f"Contenido Word: {extraer_texto_word(doc_file)}\n"
+                    else:
+                        contexto_total += f"Contenido TXT: {doc_file.read().decode('utf-8')}\n"
+                
+                if excel_file:
+                    contexto_total += f"Datos Financieros Excel: {procesar_excel(excel_file)}\n"
+                
+                if audio_file:
+                    st.info("Transcribiendo audio... esto puede tardar un momento.")
+                    contexto_total += f"Transcripción de Audio: {transcribir_audio(audio_file, api_key)}\n"
+
+                # 2. IA analiza todo y genera los slides
+                prompt = f"""
+                Actúa como un experto en inversiones inmobiliarias y comerciales en Uruguay.
+                Analiza la siguiente información acumulada:
+                ---
+                {contexto_total}
+                ---
+                Crea una presentación comercial de 7 diapositivas con este formato exacto:
+                SLIDE | TÍTULO | CONTENIDO (en puntos clave)
+
+                Asegúrate de incluir:
+                1. Introducción y Visión.
+                2. Ubicación y Mercado (Menciona Montevideo/Uruguay).
+                3. Costos e Inversión (en USD y moneda local si aparece).
+                4. Flujos Mensuales y KPIs (Calcula ROTE, ROI, Punto de Equilibrio y Cost to Income).
+                5. Beneficios Fiscales (Ley de Vivienda Promovida/COMAP).
+                6. Rol del Administrador y Beneficios antes de impuestos.
+                7. Conclusión y Cierre.
+                """
+
                 response = openai.chat.completions.create(
                     model="gpt-4o",
                     messages=[{"role": "user", "content": prompt}]
                 )
                 analisis = response.choices[0].message.content
-                
-                # --- CONSTRUCCIÓN DEL PPTX ---
+
+                # 3. Construir el PowerPoint
                 prs = Presentation()
+                slides_raw = analisis.split("SLIDE")
                 
-                # Parsear el texto por "SLIDE"
-                slides_data = analisis.split("SLIDE")
-                
-                for item in slides_data:
-                    if "|" in item:
-                        partes = item.split("|")
-                        titulo_s = partes[0].strip().replace(":", "").replace("1", "").replace("2", "").replace("3", "").replace("4", "").replace("5", "").replace("6", "").replace("7", "")
-                        contenido_s = partes[1].strip()
+                for s in slides_raw:
+                    if "|" in s:
+                        partes = s.split("|")
+                        titulo = partes[1].strip()
+                        cuerpo = partes[2].strip()
                         
-                        # Crear diapositiva
-                        slide_layout = prs.slide_layouts[1] # Título y Contenido
-                        slide = prs.slides.add_slide(slide_layout)
-                        configurar_slide(slide, titulo_s)
+                        slide = prs.slides.add_slide(prs.slide_layouts[1])
+                        configurar_slide(slide, titulo)
                         
-                        # Añadir texto con formato
                         tf = slide.placeholders[1].text_frame
                         tf.word_wrap = True
-                        for linea in contenido_s.split(". "):
-                            p = tf.add_paragraph()
-                            p.text = "• " + linea.strip()
-                            p.font.size = Pt(16)
-                            p.space_after = Pt(10)
+                        for punto in cuerpo.split(". "):
+                            if len(punto) > 3:
+                                p = tf.add_paragraph()
+                                p.text = "• " + punto.strip()
+                                p.font.size = Pt(18)
+                                p.space_after = Pt(12)
 
-                # Guardar
+                # 4. Descarga
                 buf = io.BytesIO()
                 prs.save(buf)
                 buf.seek(0)
                 
-                st.success("✅ ¡Presentación Profesional Generada!")
-                st.download_button("📥 DESCARGAR PPT PARA INVERSORES", buf, "Propuesta_Comercial_V1.pptx")
+                st.success("✅ ¡Presentación generada con todos los datos!")
+                st.download_button("📥 Descargar Presentación Pro", buf, "Propuesta_Inversor.pptx")
                 
-                with st.expander("Ver Reporte de IA"):
+                with st.expander("Ver contenido analizado por la IA"):
                     st.write(analisis)
+
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Se produjo un error al procesar: {e}")
