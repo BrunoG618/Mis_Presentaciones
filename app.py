@@ -13,7 +13,7 @@ import time
 import re
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Presentaciones Comerciales Pro", layout="wide")
+st.set_page_config(page_title="Presentaciones Pro Uruguay", layout="wide")
 st.title("🏆 Generador de Propuestas de Inversión")
 
 # --- BARRA LATERAL ---
@@ -29,10 +29,13 @@ def leer_texto_seguro(file):
         try:
             doc = Document(file)
             return "\n".join([p.text for p in doc.paragraphs])
-        except: return "Error leyendo Word."
+        except:
+            return "Error leyendo Word."
     else:
-        try: return file.read().decode("utf-8")
-        except: return "Error leyendo TXT."
+        try:
+            return file.read().decode("utf-8")
+        except:
+            return "Error leyendo TXT."
 
 def aplicar_formato_slide(slide, titulo_texto):
     """Aplica diseño corporativo con corrección de color"""
@@ -45,7 +48,8 @@ def aplicar_formato_slide(slide, titulo_texto):
         p.font.bold = True
         p.font.size = Pt(28)
         p.font.color.rgb = RGBColor(0, 51, 102)
-    except: pass
+    except:
+        pass
 
 # --- INTERFAZ ---
 st.subheader("📁 Carga de Información")
@@ -73,8 +77,10 @@ if st.button("🚀 GENERAR PRESENTACIÓN"):
             with st.spinner("Procesando datos financieros y visuales..."):
                 # 1. Recolectar datos
                 contexto = f"PROYECTO: {tipo_negocio}\n"
-                if f_doc: contexto += f"CONTENIDO: {leer_texto_seguro(f_doc)}\n"
-                if f_notas: contexto += f"NOTAS: {f_notas}\n"
+                if f_doc:
+                    contexto += f"CONTENIDO: {leer_texto_seguro(f_doc)}\n"
+                if f_notas:
+                    contexto += f"NOTAS: {f_notas}\n"
                 if f_xlsx:
                     df = pd.read_excel(f_xlsx)
                     contexto += f"DATOS EXCEL: {df.to_string()}\n"
@@ -84,6 +90,7 @@ if st.button("🚀 GENERAR PRESENTACIÓN"):
                     img = Image.open(f_foto)
                     inputs_ia.append(img)
                 
+                tmp_path = None
                 if f_media:
                     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f_media.name)[1]) as tmp:
                         tmp.write(f_media.read())
@@ -96,19 +103,21 @@ if st.button("🚀 GENERAR PRESENTACIÓN"):
 
                 # 2. IA genera contenido
                 prompt = """
-                Eres un analista de inversiones en Uruguay. Analiza todo lo adjunto.
-                Genera el contenido de 8 diapositivas.
-                Formato obligatorio: DIAPOSITIVA | TÍTULO | CONTENIDO (puntos con *)
+                Eres un analista de inversiones experto en Uruguay. Analiza todo lo adjunto.
+                Genera el contenido de exactamente 8 diapositivas profesionales.
+                Usa el formato: DIAPOSITIVA | TÍTULO | CONTENIDO (puntos con *)
                 
-                Contenido:
-                1. Portada. 2. Visión y Público. 3. Análisis de Fachada (si hay foto).
-                4. Inversión Inicial y Gastos (UYU y USD). 
-                5. KPIs: ROTE, ROI, Cost to Income, Punto de Equilibrio.
-                6. Beneficios Fiscales (Vivienda Promovida Uruguay).
-                7. Sugerencia Estética (Colores HEX y Tipografías). 
-                8. Conclusión.
+                Contenido requerido:
+                1. Portada. 
+                2. Visión y Público Objetivo. 
+                3. Análisis de Fachada y Diseño (basado en foto si existe).
+                4. Estructura de Inversión y Gastos (Flujos en UYU y USD). 
+                5. KPIs Críticos: ROTE, ROI, Cost to Income, Punto de Equilibrio.
+                6. Beneficios Fiscales (Vivienda Promovida Ley 18.795).
+                7. Sugerencia de Diseño (Colores HEX y Tipografía sugerida). 
+                8. Conclusión del Negocio.
                 
-                Limpia el texto de asteriscos dobles.
+                Limpia el texto de asteriscos dobles (**).
                 """
                 res = model.generate_content([prompt] + inputs_ia)
                 texto_ia = res.text
@@ -116,19 +125,17 @@ if st.button("🚀 GENERAR PRESENTACIÓN"):
                 # 3. Crear PowerPoint
                 prs = Presentation()
                 
-                # CREAR PORTADA INMEDIATAMENTE PARA EVITAR ERROR DE INDEX
+                # CREAR PORTADA
                 slide_portada = prs.slides.add_slide(prs.slide_layouts[0])
                 slide_portada.shapes.title.text = f"PROYECTO: {tipo_negocio}"
-                slide_portada.placeholders[1].text = "Análisis de Inversión Estratégica\nMontevideo, Uruguay"
+                slide_portada.placeholders[1].text = "Propuesta de Inversión Estratégica\nMontevideo, Uruguay"
                 
-                # Insertar imagen en la portada si existe
                 if f_foto:
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_img:
                         img.save(tmp_img.name)
                         slide_portada.shapes.add_picture(tmp_img.name, Inches(5.5), Inches(1.5), width=Inches(4))
 
-                # Procesar el resto de diapositivas de la IA
-                # Usamos una búsqueda más flexible (Mayúsculas o minúsculas)
+                # Procesar resto de diapositivas
                 slides_content = re.split(r'DIAPOSITIVA|Diapositiva', texto_ia)
                 
                 for bloque in slides_content:
@@ -141,9 +148,10 @@ if st.button("🚀 GENERAR PRESENTACIÓN"):
                             tf = slide.placeholders[1].text_frame
                             tf.word_wrap = True
                             for line in partes[2].strip().split("*"):
-                                if len(line.strip()) > 3:
+                                clean_line = line.strip().replace("**", "")
+                                if len(clean_line) > 3:
                                     p = tf.add_paragraph()
-                                    p.text = "• " + line.strip().replace("**", "")
+                                    p.text = "• " + clean_line
                                     p.font.size = Pt(18)
 
                 # 4. Descarga
@@ -151,9 +159,10 @@ if st.button("🚀 GENERAR PRESENTACIÓN"):
                 prs.save(buf)
                 buf.seek(0)
                 st.success("✅ ¡Presentación generada con éxito!")
-                st.download_button("📥 Descargar Propuesta Comercial", buf, "Propuesta_Inversor.pptx")
+                st.download_button("📥 Descargar PowerPoint Profesional", buf, "Propuesta_Inversion.pptx")
                 
-                if f_media: os.remove(tmp_path)
+                if tmp_path and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
 
         except Exception as e:
-            st.error(f"Error técnico detectado: {e}"
+            st.error(f"Error técnico detectado: {e}")
