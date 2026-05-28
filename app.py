@@ -18,7 +18,7 @@ with st.sidebar:
     st.header("Configuración de IA")
     api_key = st.text_input("Introduce tu Google API Key", type="password")
     tipo_negocio = st.selectbox("Sector", ["Reciclaje Inmobiliario", "Retail", "Gastronomía", "Tecnología", "Otro"])
-    st.info("Usando motor de análisis Gemini 1.5")
+    st.info("Sistema de auto-detección de modelo Gemini activado.")
 
 # --- FUNCIONES DE LECTURA ---
 def leer_texto(file):
@@ -32,12 +32,14 @@ def leer_texto(file):
         except: return "Error en TXT."
 
 def configurar_slide(slide, titulo_texto):
-    title = slide.shapes.title
-    title.text = titulo_texto
-    title_para = title.text_frame.paragraphs[0]
-    title_para.font.bold = True
-    title_para.font.size = Pt(28)
-    title_para.font.color.rgb = RGBColor(31, 119, 180)
+    try:
+        title = slide.shapes.title
+        title.text = titulo_texto
+        title_para = title.text_frame.paragraphs[0]
+        title_para.font.bold = True
+        title_para.font.size = Pt(28)
+        title_para.font.color.rgb = RGBColor(31, 119, 180)
+    except: pass
 
 # --- INTERFAZ ---
 col1, col2 = st.columns(2)
@@ -57,10 +59,27 @@ if st.button("✨ GENERAR PRESENTACIÓN"):
     else:
         try:
             genai.configure(api_key=api_key)
-            # Cambiamos a la nomenclatura más compatible
-            model = genai.GenerativeModel('gemini-1.5-flash-latest')
             
-            with st.spinner("Analizando y diseñando diapositivas..."):
+            # SISTEMA DE AUTO-DETECCIÓN DE MODELO
+            model_names = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
+            model = None
+            
+            with st.spinner("Buscando conexión con el cerebro de IA..."):
+                for name in model_names:
+                    try:
+                        test_model = genai.GenerativeModel(name)
+                        # Prueba rápida de conexión
+                        test_model.generate_content("Hola", generation_config={"max_output_tokens": 10})
+                        model = test_model
+                        st.success(f"Conectado exitosamente usando el modelo: {name}")
+                        break
+                    except:
+                        continue
+                
+                if model is None:
+                    st.error("No se pudo conectar con ningún modelo de Gemini. Verifica tu API Key o los permisos en Google AI Studio.")
+                    st.stop()
+
                 datos_ia = []
                 texto_contexto = f"PROYECTO: {tipo_negocio}\n"
                 
@@ -81,11 +100,9 @@ if st.button("✨ GENERAR PRESENTACIÓN"):
                     datos_ia.append(g_file)
 
                 prompt = """
-                Actúa como experto en finanzas e inversiones en Uruguay.
-                Analiza la información y crea una presentación de 7 diapositivas.
-                Formato: SLIDE | TÍTULO | CONTENIDO (puntos breves)
-                Incluye: Introducción, Ubicación, Inversión USD, KPIs (ROTE, ROI, Punto Equilibrio), 
-                Beneficios Fiscales (Vivienda Promovida) y Conclusión.
+                Eres un analista de inversiones experto. Crea una presentación de 7 diapositivas.
+                Formato estricto: SLIDE | TÍTULO | CONTENIDO (puntos breves con *)
+                Diapositivas: Portada, Resumen, Ubicación/Mercado, Inversión USD, KPIs (ROTE, ROI, Punto Equilibrio), Beneficios Fiscales Uruguay, Conclusión.
                 """
 
                 response = model.generate_content([prompt] + datos_ia)
@@ -93,29 +110,35 @@ if st.button("✨ GENERAR PRESENTACIÓN"):
 
                 # Crear PPTX
                 prs = Presentation()
-                for bloque in analisis.split("SLIDE"):
+                # Limpiar el texto para procesar slides
+                slides_raw = analisis.split("SLIDE")
+                
+                for bloque in slides_raw:
                     if "|" in bloque:
                         partes = bloque.split("|")
                         if len(partes) >= 3:
-                            titulo = partes[1].strip()
+                            titulo = partes[1].strip().replace(":", "")
                             contenido = partes[2].strip()
                             
                             slide = prs.slides.add_slide(prs.slide_layouts[1])
                             configurar_slide(slide, titulo)
                             tf = slide.placeholders[1].text_frame
-                            for p_text in contenido.split("* "):
-                                if len(p_text) > 2:
+                            tf.word_wrap = True
+                            
+                            for p_text in contenido.split("*"):
+                                clean_text = p_text.strip()
+                                if len(clean_text) > 3:
                                     p = tf.add_paragraph()
-                                    p.text = "• " + p_text.strip()
+                                    p.text = clean_text
                                     p.font.size = Pt(18)
 
                 buf = io.BytesIO()
                 prs.save(buf)
                 buf.seek(0)
                 st.success("✅ ¡Presentación generada!")
-                st.download_button("📥 Descargar PowerPoint", buf, "Propuesta_Comercial.pptx")
+                st.download_button("📥 Descargar PowerPoint", buf, "Propuesta_Inversion.pptx")
                 
                 if tmp_path: os.remove(tmp_path)
 
         except Exception as e:
-            st.error(f"Error detectado: {e}")
+            st.error(f"Error detallado: {e}")
