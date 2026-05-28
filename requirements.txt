@@ -1,6 +1,6 @@
 streamlit
 pandas
 python-pptx
-openai
+google-generativeai
 openpyxl
 python-docx
