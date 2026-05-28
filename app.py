@@ -10,158 +10,176 @@ import google.generativeai as genai
 from PIL import Image
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Presentaciones Comerciales Universales", layout="wide")
-st.title("🚀 Generador Universal de Proyectos de Inversión")
-st.markdown("Carga cualquier proyecto (Lavaderos, Apps, Inmuebles, etc.) y genera una propuesta comercial de alto nivel.")
+st.set_page_config(page_title="Generador Universal de Negocios", layout="wide")
+st.title("🏆 Business Case Generator: Presentaciones de Inversión")
+st.markdown("Analiza Lavaderos, Inmuebles, Apps o cualquier unidad de negocio con IA Multimodal.")
 
 # --- BARRA LATERAL ---
 with st.sidebar:
     st.header("⚙️ Configuración")
     api_key = st.text_input("Introduce tu Google API Key", type="password")
-    moneda_local = st.text_input("Moneda Local (ej: UYU, ARS, MXN)", value="UYU")
+    moneda_local = st.text_input("Moneda Local (ej: UYU, ARS)", value="UYU")
     st.divider()
-    st.info("La IA detectará automáticamente el sector y aplicará el diseño y KPIs adecuados.")
+    st.info("KPIs incluidos: ROTE, ROI, Cost to Income, Punto de Equilibrio.")
 
-# --- FUNCIONES TÉCNICAS ---
-def leer_archivo(file):
-    if file.name.lower().endswith('.docx'):
-        return "\n".join([p.text for p in Document(file).paragraphs])
-    return file.read().decode("utf-8")
+# --- FUNCIONES TÉCNICAS BLINDADAS ---
 
 def hex_to_rgb(hex_color):
-    hex_color = hex_color.lstrip('#')
-    return RGBColor(int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16))
+    """Convierte HEX a RGB para PowerPoint"""
+    try:
+        hex_color = hex_color.lstrip('#')
+        return RGBColor(int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16))
+    except:
+        return RGBColor(212, 175, 55) # Dorado por defecto si falla
 
-# --- MOTOR DE DISEÑO DINÁMICO ---
-def crear_slide_pro(prs, titulo, contenido, color_hex, imagen=None):
-    slide = prs.slides.add_slide(prs.slide_layouts[1])
-    # Fondo
-    bg_color = hex_to_rgb(color_hex)
+def leer_archivo_texto(file):
+    """Evita el error de Zip diferenciando Word de TXT"""
+    nombre = file.name.lower()
+    try:
+        if nombre.endswith('.docx'):
+            doc = Document(file)
+            return "\n".join([p.text for p in doc.paragraphs])
+        else:
+            return file.read().decode("utf-8", errors="ignore")
+    except Exception as e:
+        return f"No se pudo leer el archivo: {e}"
+
+def disenar_slide(slide, titulo, contenido, accent_hex, imagen_pil=None):
+    """Motor de Diseño: Fondo oscuro, títulos en color de acento y maquetación pro"""
+    # Fondo Oscuro Premium
     slide.background.fill.solid()
-    slide.background.fill.fore_color.rgb = RGBColor(20, 20, 20) # Fondo oscuro neutro
+    slide.background.fill.fore_color.rgb = RGBColor(18, 18, 18)
     
-    # Barra decorativa lateral
-    shape = slide.shapes.add_shape(1, 0, 0, Inches(0.1), Inches(7.5))
-    shape.fill.solid()
-    shape.fill.foreground_color.rgb = bg_color
-    shape.line.fill.background()
-
+    color_acento = hex_to_rgb(accent_hex)
+    
     # Título
     title_shape = slide.shapes.title
     title_shape.text = titulo.upper()
-    p = title_shape.text_frame.paragraphs[0]
-    p.font.size = Pt(32)
-    p.font.bold = True
-    p.font.color.rgb = bg_color
-    p.alignment = PP_ALIGN.LEFT
+    title_para = title_shape.text_frame.paragraphs[0]
+    title_para.font.size = Pt(32)
+    title_para.font.bold = True
+    title_para.font.color.rgb = color_acento
+    title_para.alignment = PP_ALIGN.LEFT
 
-    # Cuerpo
+    # Cuerpo de texto
     body_shape = slide.placeholders[1]
-    body_shape.width = Inches(5.5) if imagen else Inches(9)
+    # Si hay imagen, el texto ocupa la mitad
+    body_shape.width = Inches(5.2) if imagen_pil else Inches(9)
     tf = body_shape.text_frame
     tf.word_wrap = True
     
     for linea in contenido.split('\n'):
-        if len(linea.strip()) > 3:
+        clean_l = linea.strip().replace('*', '').replace('-', '').strip()
+        if len(clean_l) > 3:
             p = tf.add_paragraph()
-            p.text = "• " + linea.strip().replace('*', '').replace('-', '')
-            p.font.size = Pt(16)
-            p.font.color.rgb = RGBColor(240, 240, 240)
+            p.text = "• " + clean_l
+            p.font.size = Pt(17)
+            p.font.color.rgb = RGBColor(230, 230, 230)
             p.space_after = Pt(10)
 
-    # Imagen con marco
-    if imagen:
+    # Insertar Imagen si existe (a la derecha)
+    if imagen_pil:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-            imagen.save(tmp.name)
-            slide.shapes.add_picture(tmp.name, Inches(5.8), Inches(1.5), height=Inches(4.5))
+            imagen_pil.save(tmp.name)
+            slide.shapes.add_picture(tmp.name, Inches(5.6), Inches(1.5), height=Inches(4.5))
 
-# --- INTERFAZ DE USUARIO ---
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.subheader("📁 Datos")
-    f_doc = st.file_uploader("Contrato/Charla/Word", type=["docx", "txt"])
-    f_xlsx = st.file_uploader("Planilla Financiera", type=["xlsx"])
-with col2:
-    st.subheader("🎥 Multimedia")
-    f_media = st.file_uploader("Audio o Video", type=["mp4", "mp3", "wav"])
-    f_foto = st.file_uploader("Imagen/Logo/Fachada", type=["jpg", "png", "jpeg"])
-with col3:
-    st.subheader("✍️ Contexto")
-    notas = st.text_area("Explica el proyecto brevemente:", height=150, placeholder="Ej: Lavadero automático en zona transitada...")
+# --- INTERFAZ DE USUARIO (TODOS LOS BOTONES REQUERIDOS) ---
+st.subheader("📥 Carga Multimodal de Proyecto")
+c1, c2, c3 = st.columns(3)
+
+with c1:
+    f_doc = st.file_uploader("1. Conversación (Word o TXT)", type=["docx", "txt"])
+    f_xlsx = st.file_uploader("2. Planilla Excel (Costos/Ventas)", type=["xlsx"])
+
+with c2:
+    f_media = st.file_uploader("3. Audio o Video de la charla", type=["mp3", "mp4", "wav", "m4a"])
+    f_foto = st.file_uploader("4. Imagen (Fachada, Logo o Render)", type=["jpg", "png", "jpeg"])
+
+with c3:
+    f_notas = st.text_area("5. Notas adicionales y contexto:", height=160, placeholder="Explica el negocio aquí...")
 
 # --- PROCESAMIENTO ---
-if st.button("🏗️ GENERAR PRESENTACIÓN COMERCIAL"):
+if st.button("🚀 GENERAR PRESENTACIÓN COMERCIAL"):
     if not api_key:
-        st.error("Falta API Key")
+        st.error("Introduce tu API Key en la barra lateral.")
     else:
         try:
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
             
-            with st.spinner("Analizando modelo de negocio y preparando diseño..."):
-                # 1. Recolectar datos
-                contexto = f"MONEDA LOCAL: {moneda_local}\nCONTEXTO: {notas}\n"
-                if f_doc: contexto += f"DOC: {leer_archivo(f_doc)}\n"
-                if f_xlsx: contexto += f"EXCEL: {pd.read_excel(f_xlsx).to_string()}\n"
+            # --- AUTO-DETECCIÓN DE MODELO (EVITA ERROR 404) ---
+            modelos_disponibles = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            modelo_nombre = next((m for m in modelos_disponibles if '1.5-flash' in m), modelos_disponibles[0])
+            model = genai.GenerativeModel(modelo_nombre)
+            
+            with st.spinner(f"Analizando negocio con {modelo_nombre}..."):
+                # Unificar contexto
+                contexto_final = f"MONEDA LOCAL: {moneda_local}\n"
+                if f_notas: contexto_final += f"CONTEXTO: {f_notas}\n"
+                if f_doc: contexto_final += f"DOCUMENTO: {leer_archivo_texto(f_doc)}\n"
+                if f_xlsx:
+                    df = pd.read_excel(f_xlsx)
+                    contexto_final += f"DATOS EXCEL:\n{df.to_string()}\n"
                 
-                inputs = [contexto]
-                if f_foto: inputs.append(Image.open(f_foto))
+                prompt_parts = [contexto_final]
+                if f_foto: prompt_parts.append(Image.open(f_foto))
+                
+                # Manejo de Multimedia
                 if f_media:
                     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f_media.name)[1]) as tmp:
                         tmp.write(f_media.read())
                         t_path = tmp.name
                     gf = genai.upload_file(path=t_path)
-                    while gf.state.name == "PROCESSING": time.sleep(2); gf = genai.get_file(gf.name)
-                    inputs.append(gf)
+                    while gf.state.name == "PROCESSING":
+                        time.sleep(2)
+                        gf = genai.get_file(gf.name)
+                    prompt_parts.append(gf)
 
-                # 2. PROMPT DINÁMICO UNIVERSAL
-                prompt = f"""
-                Eres un Consultor de Inversiones de élite. Analiza este proyecto de cualquier sector.
-                TAREAS:
-                1. Detecta el sector del negocio y define una paleta de colores HEX (un solo color principal vibrante).
-                2. Calcula/Estima KPIs específicos: ROTE, ROI, Cost to Income, Punto de Equilibrio y Ticket Promedio (si aplica).
-                3. Proyecta flujos en {moneda_local} y USD.
-                4. Explica beneficios fiscales y rentabilidad Pre y Post impuestos.
+                # PROMPT MAESTRO (UNIVERSAL)
+                prompt_maestro = f"""
+                Eres un Consultor Senior de Inversiones. Analiza el material adjunto.
+                1. Detecta el sector de negocio.
+                2. Elige un color HEX vibrante para el branding.
+                3. Calcula KPIs: ROTE, ROI, Cost to Income, Punto de Equilibrio y otros datos importantes sugeridos.
+                4. Explica flujos en {moneda_local} y USD.
+                5. Menciona Beneficios Fiscales (Vivienda Promovida/COMAP si es Uruguay).
                 
-                GENERA 10 DIAPOSITIVAS:
-                Usa este formato exacto: 
+                RESPONDE CON ESTE FORMATO:
                 COLOR: #HEX
-                SLIDE: Título | Contenido en puntos clave (separados por *)
+                [SLIDE] Título | Punto 1 * Punto 2 * Punto 3
                 
-                Diapositivas: 1. Portada, 2. El Problema/Oportunidad, 3. Público Objetivo, 4. Características del Negocio, 
-                5. Zonas/Ubicación, 6. Costos de Inversión inicial, 7. Ingresos y Gastos mensuales, 
-                8. Beneficios Fiscales y Tax Efficiency, 9. KPIs y Proyecciones, 10. Conclusión y Branding.
+                Genera 10 diapositivas: Portada, Problema, Solución, Público, Ubicación/Zonas, Inversión, Operación, Beneficios Fiscales, KPIs Financieros, Cierre.
                 """
                 
-                res = model.generate_content([prompt] + inputs)
-                raw_text = res.text
+                res = model.generate_content([prompt_maestro] + prompt_parts)
+                texto_ia = res.text
 
-                # 3. EXTRAER COLOR Y CONSTRUIR PPTX
-                color_match = re.search(r'COLOR:\s*(#[0-9A-Fa-f]{6})', raw_text)
-                color_hex = color_match.group(1) if color_match else "#D4AF37"
-                
+                # --- CONSTRUCCIÓN DEL PPTX ---
                 prs = Presentation()
-                bloques = raw_text.split("SLIDE:")
                 
+                # Extraer color de acento
+                match_color = re.search(r'COLOR:\s*(#[0-9A-Fa-f]{6})', texto_ia)
+                accent_hex = match_color.group(1) if match_color else "#D4AF37"
+                
+                # Crear Slides
+                bloques = texto_ia.split("[SLIDE]")
                 for i, bloque in enumerate(bloques):
                     if "|" in bloque:
                         partes = bloque.split("|")
-                        titulo = partes[0].replace("COLOR:", "").strip()
-                        contenido = partes[1].strip().replace("*", "\n")
+                        titulo_s = partes[0].replace(f"COLOR: {accent_hex}", "").strip()
+                        contenido_s = partes[1].strip().replace("*", "\n")
                         
+                        # Solo poner imagen en la portada o slides iniciales
                         img_para_slide = Image.open(f_foto) if (i <= 2 and f_foto) else None
-                        crear_slide_pro(prs, titulo, contenido, color_hex, img_para_slide)
+                        disenar_slide(prs, titulo_s, contenido_s, accent_hex, img_para_slide)
 
-                # Descarga
+                # Exportar para descarga
                 buf = io.BytesIO()
                 prs.save(buf)
                 buf.seek(0)
-                st.success(f"✅ ¡Propuesta de {tipo_negocio if 'tipo_negocio' in locals() else 'Negocio'} lista!")
-                st.download_button("📥 Descargar Presentación Pro", buf, "Propuesta_Comercial_Universal.pptx")
+                st.success("✅ ¡Presentación Comercial Generada!")
+                st.download_button("📥 Descargar PowerPoint Profesional", buf, "Propuesta_Inversion.pptx")
                 
                 if f_media: os.remove(t_path)
-                with st.expander("Auditoría de Datos (Lo que la IA analizó)"):
-                    st.write(raw_text)
 
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Error técnico detectado: {e}")
