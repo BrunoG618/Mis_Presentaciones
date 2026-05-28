@@ -6,171 +6,176 @@ from pptx.dml.color import RGBColor
 import io
 import os
 import tempfile
+import time
 from docx import Document
 import google.generativeai as genai
 from PIL import Image
-import time
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Presentaciones Comerciales", layout="wide")
-st.title("🏛️ Presentaciones Comerciales: Versión Definitiva")
+# --- CONFIGURACIÓN DE ESTILO ---
+AZUL_URUGUAY = RGBColor(0, 51, 102)
+GRIS_TEXTO = RGBColor(64, 64, 64)
+NARANJA_OBRA = RGBColor(255, 102, 0)
 
-# --- ESTÉTICA ---
-AZUL_DARK = RGBColor(11, 46, 81)
-NARANJA_OBRA = RGBColor(230, 126, 34)
+st.set_page_config(page_title="Presentaciones Pro Uruguay", layout="wide")
+st.title("🏆 Generador de Proyectos de Inversión")
 
 # --- BARRA LATERAL ---
 with st.sidebar:
-    st.header("Configuración")
+    st.header("Configuración de IA")
     api_key = st.text_input("Introduce tu Google API Key", type="password")
-    tipo_negocio = st.selectbox("Sector", ["Reciclaje Inmobiliario", "Inversión Inmobiliaria", "Retail", "Gastronomía", "Otro"])
-    st.info("Esta versión procesa: Audio, Video, Excel, Word, TXT e Imágenes.")
+    tipo_negocio = st.selectbox("Sector", ["Reciclaje Inmobiliario", "Inversión Comercial", "Retail", "Gastronomía", "Otro"])
+    st.info("Esta versión procesa: Texto, Excel, Fotos y Video/Audio.")
 
-# --- FUNCIONES DE LECTURA BLINDADAS ---
-def safe_read_doc(file):
-    """Detecta el tipo de archivo y lo lee sin errores de ZIP"""
-    try:
-        if file.name.lower().endswith(".docx"):
+# --- FUNCIONES DE LECTURA BLINDADAS (ELIMINA EL ERROR 'NOT A ZIP') ---
+def procesar_archivo_texto(file):
+    if file.name.lower().endswith('.docx'):
+        try:
             doc = Document(file)
             return "\n".join([p.text for p in doc.paragraphs])
-        else:
+        except Exception as e:
+            return f"\n[Error leyendo Word: {e}]\n"
+    elif file.name.lower().endswith('.txt'):
+        try:
             return file.read().decode("utf-8")
-    except Exception as e:
-        return f"Error leyendo texto: {e}"
+        except Exception as e:
+            return f"\n[Error leyendo TXT: {e}]\n"
+    return ""
 
-def safe_read_excel(file):
+def procesar_excel_seguro(file):
     try:
         df = pd.read_excel(file)
-        return df.to_string()
+        return f"\nDATOS FINANCIEROS (EXCEL):\n{df.to_string()}\n"
     except Exception as e:
-        return f"Error leyendo Excel: {e}"
+        return f"\n[Error leyendo Excel: {e}]\n"
 
 def aplicar_diseno(slide, titulo_texto):
-    """Diseño profesional para cada diapositiva"""
+    """Diseño profesional para inversores"""
     title = slide.shapes.title
     title.text = titulo_texto
     p = title.text_frame.paragraphs[0]
     p.font.bold = True
     p.font.size = Pt(30)
-    p.font.color.rgb = AZUL_DARK
-    # Línea decorativa
-    line = slide.shapes.add_shape(1, Inches(0.5), Inches(1.15), Inches(3.5), Inches(0.04))
+    p.font.color.rgb = AZUL_URUGUAY
+    
+    # Línea decorativa naranja
+    line = slide.shapes.add_shape(1, Inches(0.5), Inches(1.15), Inches(4), Inches(0.05))
     line.fill.solid()
     line.fill.foreground_color.rgb = NARANJA_OBRA
     line.line.fill.background()
 
 # --- INTERFAZ DE CARGA MULTIMODAL ---
-st.subheader("📁 Ingesta de Datos del Proyecto")
+st.subheader("📁 Carga de Información (Formatos soportados: Word, TXT, Excel, JPG, MP4, MP3)")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.markdown("🔍 **Documentos y Datos**")
-    f_doc = st.file_uploader("Conversación (Word o TXT)", type=["docx", "txt"])
-    f_xlsx = st.file_uploader("Excel Financiero", type=["xlsx"])
+    f_texto = st.file_uploader("Documento de Texto o Word", type=["docx", "txt"])
+    f_excel = st.file_uploader("Planilla Financiera Excel", type=["xlsx"])
 
 with col2:
-    st.markdown("🎥 **Multimedia**")
-    f_media = st.file_uploader("Audio o Video de la charla", type=["mp3", "mp4", "wav", "m4a"])
-    f_notas = st.text_area("Notas o detalles adicionales:", height=150)
+    f_multimedia = st.file_uploader("Audio o Video de la charla", type=["mp3", "wav", "mp4", "m4a"])
+    f_notas = st.text_area("Notas manuales o transcripción:", height=100)
 
 with col3:
-    st.markdown("🖼️ **Visuales**")
-    f_foto = st.file_uploader("Imagen de Fachada o Planos", type=["jpg", "png", "jpeg"])
+    f_imagen = st.file_uploader("Imagen de Fachada o Render", type=["jpg", "png", "jpeg"])
 
-# --- PROCESAMIENTO ---
-if st.button("🚀 GENERAR PRESENTACIÓN COMPLETA"):
+# --- PROCESO PRINCIPAL ---
+if st.button("🚀 GENERAR PRESENTACIÓN EJECUTIVA"):
     if not api_key:
-        st.error("Por favor, introduce tu API Key.")
+        st.error("Por favor, introduce tu API Key de Google.")
     else:
         try:
             genai.configure(api_key=api_key)
+            # Auto-selección de modelo para evitar error 404
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
-            # 1. Buscador dinámico de modelo (Evita Error 404)
-            modelos_disponibles = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            target_model = next((m for m in modelos_disponibles if '1.5-flash' in m), modelos_disponibles[0])
-            model = genai.GenerativeModel(target_model)
-
-            with st.spinner("Procesando información multimodal y diseñando propuesta..."):
+            with st.spinner("Analizando información multimodal y diseñando diapositivas..."):
                 
-                # 2. Recolección de toda la información
-                contexto_total = f"PROYECTO: {tipo_negocio}\n"
-                inputs_ia = []
+                entradas_ia = []
+                # 1. Recopilar todo el texto de forma segura
+                contexto_texto = f"PROYECTO: {tipo_negocio}\n"
+                if f_texto: contexto_texto += f"CONTENIDO DOC: {procesar_archivo_texto(f_texto)}\n"
+                if f_excel: contexto_texto += procesar_excel_seguro(f_excel)
+                if f_notas: contexto_texto += f"NOTAS EXTRAS: {f_notas}\n"
                 
-                if f_doc: contexto_total += f"DOCUMENTO: {safe_read_doc(f_doc)}\n"
-                if f_xlsx: contexto_total += f"EXCEL: {safe_read_excel(f_xlsx)}\n"
-                if f_notas: contexto_total += f"NOTAS: {f_notas}\n"
-                
-                inputs_ia.append(contexto_total)
+                entradas_ia.append(contexto_texto)
 
-                # Procesar Foto
-                if f_foto:
-                    img = Image.open(f_foto)
-                    inputs_ia.append(img)
+                # 2. Procesar Imagen
+                if f_imagen:
+                    img = Image.open(f_imagen)
+                    entradas_ia.append(img)
 
-                # Procesar Multimedia (Audio/Video)
-                if f_media:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f_media.name)[1]) as tmp:
-                        tmp.write(f_media.read())
+                # 3. Procesar Multimedia
+                if f_multimedia:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f_multimedia.name)[1]) as tmp:
+                        tmp.write(f_multimedia.read())
                         tmp_path = tmp.name
+                    
                     g_file = genai.upload_file(path=tmp_path)
                     while g_file.state.name == "PROCESSING":
                         time.sleep(2)
                         g_file = genai.get_file(g_file.name)
-                    inputs_ia.append(g_file)
+                    entradas_ia.append(g_file)
 
-                # 3. PROMPT DE NEGOCIO (REQUERIMIENTOS)
-                prompt = f"""
-                Analiza TODA la info adjunta para este proyecto de {tipo_negocio} en Uruguay.
-                Crea una presentación de 9 diapositivas para inversores.
-                Usa el separador '---' entre cada diapositiva.
-                Formato de cada bloque: Título | Contenido (puntos con *)
+                # 4. Prompt Maestro (KPIs y Requerimientos Uruguay)
+                prompt = """
+                Analiza toda la información (texto, excel, imagen y multimedia). 
+                Crea una presentación comercial de 9 diapositivas para inversores.
+                Usa el separador '#### SLIDE ####' entre diapositivas.
                 
-                REQUERIMIENTOS DE CONTENIDO:
-                - Introducción, Público objetivo y Zonas de inversión.
-                - Principales características del negocio.
-                - Costos de inversión y gastos mensuales (UYU y USD).
-                - Beneficios Fiscales Uruguay (Vivienda Promovida / Ley 18.795).
-                - KPIs: Punto de Equilibrio, ROTE, ROI y Cost to Income.
-                - Sugerencia de diseño: Colores HEX y tipografías acordes al proyecto.
+                Formato de respuesta:
+                #### SLIDE ####
+                TÍTULO: [Título de la diapositiva]
+                CONTENIDO: [Puntos clave separados por asteriscos *]
+
+                REQUERIMIENTOS:
+                - Incluye KPIs: ROTE, ROI, Cost to Income y Punto de Equilibrio.
+                - Separa flujos en Moneda Nacional (UYU) y Dólares (USD).
+                - Menciona Beneficios Fiscales: Vivienda Promovida (Ley 18.795).
+                - Diapositivas: Portada, Visión, Ubicación, El Negocio, Inversión y Gastos, Beneficios Fiscales, Rentabilidad (KPIs), Diseño Sugerido (colores y tipos), Cierre.
                 """
 
-                # 4. LLAMADA A IA Y CONSTRUCCIÓN DE PPTX
-                res = model.generate_content([prompt] + inputs_ia)
+                res = model.generate_content([prompt] + entradas_ia)
                 texto_ia = res.text
-                
+
+                # 5. CONSTRUCCIÓN DEL PPTX
                 prs = Presentation()
-                bloques = texto_ia.split("---")
+                bloques = texto_ia.split("#### SLIDE ####")
                 
                 for bloque in bloques:
-                    if "|" in bloque:
-                        partes = bloque.split("|")
-                        if len(partes) >= 2:
+                    if "TÍTULO:" in bloque and "CONTENIDO:" in bloque:
+                        try:
+                            # Extraer datos
+                            titulo_s = bloque.split("CONTENIDO:")[0].replace("TÍTULO:", "").strip()
+                            contenido_s = bloque.split("CONTENIDO:")[1].strip()
+                            
                             slide = prs.slides.add_slide(prs.slide_layouts[1])
-                            aplicar_diseno(slide, partes[0].strip().replace("**", ""))
+                            aplicar_diseno(slide, titulo_s.replace("**", ""))
                             
                             tf = slide.placeholders[1].text_frame
                             tf.word_wrap = True
-                            for p_text in partes[1].strip().split("*"):
-                                if len(p_text.strip()) > 3:
+                            for punto in contenido_s.split("*"):
+                                if len(punto.strip()) > 3:
                                     p = tf.add_paragraph()
-                                    p.text = "• " + p_text.strip().replace("**", "")
+                                    p.text = punto.strip().replace("**", "")
                                     p.font.size = Pt(17)
+                                    p.font.color.rgb = GRIS_TEXTO
+                        except: continue
 
-                # Insertar foto en la portada si existe
-                if f_foto:
+                # Inserción de imagen en portada si existe
+                if f_imagen:
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_img:
                         img.save(tmp_img.name)
-                        prs.slides[0].shapes.add_picture(tmp_img.name, Inches(6), Inches(1.4), width=Inches(3.4))
+                        prs.slides[0].shapes.add_picture(tmp_img.name, Inches(6.2), Inches(1.5), width=Inches(3.2))
 
-                # 5. DESCARGA
+                # 6. Descarga
                 buf = io.BytesIO()
                 prs.save(buf)
                 buf.seek(0)
                 
-                st.success("✅ ¡Presentación generada con éxito!")
-                st.download_button("📥 Descargar Propuesta Comercial", buf, "Propuesta_Comercial.pptx")
+                st.success("✅ ¡Presentación Completa Generada!")
+                st.download_button("📥 Descargar Propuesta Comercial", buf, "Propuesta_Inversor_Uruguay.pptx")
                 
-                if f_media: os.remove(tmp_path)
+                if f_multimedia: os.remove(tmp_path)
 
         except Exception as e:
             st.error(f"Error técnico detectado: {e}")
