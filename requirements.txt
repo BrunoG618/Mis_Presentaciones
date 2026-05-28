@@ -4,3 +4,4 @@ python-pptx
 google-generativeai
 openpyxl
 python-docx
+Pillow
