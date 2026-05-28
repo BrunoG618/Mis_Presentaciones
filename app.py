@@ -10,6 +10,7 @@ from docx import Document
 import google.generativeai as genai
 from PIL import Image
 import time
+import re
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Presentaciones Comerciales Pro", layout="wide")
@@ -20,9 +21,9 @@ with st.sidebar:
     st.header("Configuración")
     api_key = st.text_input("Introduce tu Google API Key", type="password")
     tipo_negocio = st.selectbox("Sector", ["Reciclaje Inmobiliario", "Inversión Comercial", "Otro"])
-    st.info("Esta versión detecta automáticamente el modelo de IA disponible en tu cuenta.")
+    st.info("Detectando automáticamente el mejor modelo disponible...")
 
-# --- FUNCIONES DE LECTURA SEGURA ---
+# --- FUNCIONES DE LECTURA ---
 def leer_texto_seguro(file):
     if file.name.lower().endswith('.docx'):
         try:
@@ -34,25 +35,23 @@ def leer_texto_seguro(file):
         except: return "Error leyendo TXT."
 
 def aplicar_formato_slide(slide, titulo_texto):
-    """Aplica diseño corporativo corrigiendo el error de fore_color"""
-    # Fondo Gris
-    slide.background.fill.solid()
-    slide.background.fill.fore_color.rgb = RGBColor(245, 245, 245)
-    
-    # Título Azul
-    title = slide.shapes.title
-    title.text = titulo_texto
-    p = title.text_frame.paragraphs[0]
-    p.font.bold = True
-    p.font.size = Pt(28)
-    p.font.color.rgb = RGBColor(0, 51, 102) # Azul Marino
+    """Aplica diseño corporativo con corrección de color"""
+    try:
+        slide.background.fill.solid()
+        slide.background.fill.fore_color.rgb = RGBColor(245, 245, 245)
+        title = slide.shapes.title
+        title.text = titulo_texto
+        p = title.text_frame.paragraphs[0]
+        p.font.bold = True
+        p.font.size = Pt(28)
+        p.font.color.rgb = RGBColor(0, 51, 102)
+    except: pass
 
-# --- INTERFAZ DE CARGA ---
-st.subheader("📁 Carga de Archivos")
+# --- INTERFAZ ---
+st.subheader("📁 Carga de Información")
 col1, col2, col3 = st.columns(3)
-
 with col1:
-    f_doc = st.file_uploader("Documento (Word o TXT)", type=["docx", "txt"])
+    f_doc = st.file_uploader("Conversación (Word o TXT)", type=["docx", "txt"])
     f_xlsx = st.file_uploader("Planilla Excel", type=["xlsx"])
 with col2:
     f_media = st.file_uploader("Audio o Video", type=["mp3", "mp4", "wav", "m4a"])
@@ -67,27 +66,24 @@ if st.button("🚀 GENERAR PRESENTACIÓN"):
     else:
         try:
             genai.configure(api_key=api_key)
+            models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            model_name = next((m for m in models if '1.5-flash' in m), models[0])
+            model = genai.GenerativeModel(model_name)
             
-            # SOLUCIÓN AL ERROR 404: Detección automática de modelo
-            modelos_disponibles = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            modelo_nombre = next((m for m in modelos_disponibles if '1.5-flash' in m), modelos_disponibles[0])
-            model = genai.GenerativeModel(modelo_nombre)
-            
-            with st.spinner(f"Conectado a {modelo_nombre}. Analizando proyecto..."):
-                # Recolectar Información
+            with st.spinner("Procesando datos financieros y visuales..."):
+                # 1. Recolectar datos
                 contexto = f"PROYECTO: {tipo_negocio}\n"
-                if f_doc: contexto += f"TEXTO: {leer_texto_seguro(f_doc)}\n"
+                if f_doc: contexto += f"CONTENIDO: {leer_texto_seguro(f_doc)}\n"
                 if f_notas: contexto += f"NOTAS: {f_notas}\n"
                 if f_xlsx:
                     df = pd.read_excel(f_xlsx)
                     contexto += f"DATOS EXCEL: {df.to_string()}\n"
                 
-                prompt_input = [contexto]
+                inputs_ia = [contexto]
                 if f_foto:
                     img = Image.open(f_foto)
-                    prompt_input.append(img)
+                    inputs_ia.append(img)
                 
-                # Manejo de Audio/Video con espera activa
                 if f_media:
                     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f_media.name)[1]) as tmp:
                         tmp.write(f_media.read())
@@ -96,35 +92,46 @@ if st.button("🚀 GENERAR PRESENTACIÓN"):
                     while g_file.state.name == "PROCESSING":
                         time.sleep(2)
                         g_file = genai.get_file(g_file.name)
-                    prompt_input.append(g_file)
+                    inputs_ia.append(g_file)
 
-                # PROMPT MAESTRO
-                prompt_ia = """
-                Analiza todo el material adjunto para un proyecto de inversión en Uruguay.
-                Genera el contenido de 8 diapositivas profesionales.
-                Formato: DIAPOSITIVA | TÍTULO | CONTENIDO (puntos con *)
+                # 2. IA genera contenido
+                prompt = """
+                Eres un analista de inversiones en Uruguay. Analiza todo lo adjunto.
+                Genera el contenido de 8 diapositivas.
+                Formato obligatorio: DIAPOSITIVA | TÍTULO | CONTENIDO (puntos con *)
                 
-                REQUERIMIENTO:
-                1. Portada con visión general.
-                2. Introducción y Público Objetivo.
-                3. Análisis de Fachada y Diseño (si hay foto).
-                4. Inversión Inicial y Gastos Mensuales (en UYU y USD).
-                5. KPIs: ROTE, ROI, Cost to Income y Punto de Equilibrio.
-                6. Beneficios Fiscales (Vivienda Promovida Ley 18.795).
-                7. Sugerencia de Colores HEX y Tipografías.
+                Contenido:
+                1. Portada. 2. Visión y Público. 3. Análisis de Fachada (si hay foto).
+                4. Inversión Inicial y Gastos (UYU y USD). 
+                5. KPIs: ROTE, ROI, Cost to Income, Punto de Equilibrio.
+                6. Beneficios Fiscales (Vivienda Promovida Uruguay).
+                7. Sugerencia Estética (Colores HEX y Tipografías). 
                 8. Conclusión.
                 
-                IMPORTANTE: Limpia el texto de asteriscos. No uses negritas.
+                Limpia el texto de asteriscos dobles.
                 """
-                
-                prompt_input.insert(0, prompt_ia)
-                res = model.generate_content(prompt_input)
+                res = model.generate_content([prompt] + inputs_ia)
                 texto_ia = res.text
 
-                # --- GENERACIÓN PPTX ---
+                # 3. Crear PowerPoint
                 prs = Presentation()
                 
-                for bloque in texto_ia.split("DIAPOSITIVA"):
+                # CREAR PORTADA INMEDIATAMENTE PARA EVITAR ERROR DE INDEX
+                slide_portada = prs.slides.add_slide(prs.slide_layouts[0])
+                slide_portada.shapes.title.text = f"PROYECTO: {tipo_negocio}"
+                slide_portada.placeholders[1].text = "Análisis de Inversión Estratégica\nMontevideo, Uruguay"
+                
+                # Insertar imagen en la portada si existe
+                if f_foto:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_img:
+                        img.save(tmp_img.name)
+                        slide_portada.shapes.add_picture(tmp_img.name, Inches(5.5), Inches(1.5), width=Inches(4))
+
+                # Procesar el resto de diapositivas de la IA
+                # Usamos una búsqueda más flexible (Mayúsculas o minúsculas)
+                slides_content = re.split(r'DIAPOSITIVA|Diapositiva', texto_ia)
+                
+                for bloque in slides_content:
                     if "|" in bloque:
                         partes = bloque.split("|")
                         if len(partes) >= 3:
@@ -139,19 +146,14 @@ if st.button("🚀 GENERAR PRESENTACIÓN"):
                                     p.text = "• " + line.strip().replace("**", "")
                                     p.font.size = Pt(18)
 
-                # Insertar imagen en portada si existe
-                if f_foto:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_img:
-                        img.save(tmp_img.name)
-                        prs.slides[0].shapes.add_picture(tmp_img.name, Inches(5.5), Inches(1.5), width=Inches(4))
-
-                # Descarga
+                # 4. Descarga
                 buf = io.BytesIO()
                 prs.save(buf)
                 buf.seek(0)
+                st.success("✅ ¡Presentación generada con éxito!")
+                st.download_button("📥 Descargar Propuesta Comercial", buf, "Propuesta_Inversor.pptx")
                 
-                st.success("✅ ¡Presentación Completa Generada!")
-                st.download_button("📥 Descargar Presentación", buf, "Propuesta_Inversor.pptx")
+                if f_media: os.remove(tmp_path)
 
         except Exception as e:
-            st.error(f"Error técnico detectado: {e}")
+            st.error(f"Error técnico detectado: {e}"
