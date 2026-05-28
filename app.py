@@ -11,22 +11,29 @@ import google.generativeai as genai
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Inversiones Inteligentes - Uruguay", layout="wide")
-st.title("🚀 Generador de Presentaciones Multimodal")
-st.write("Sube cualquier formato (Video, Audio, Excel, Word) y genera tu propuesta comercial.")
+st.title("🚀 Generador de Presentaciones Pro")
 
 # --- BARRA LATERAL ---
 with st.sidebar:
     st.header("Configuración de IA")
-    api_key = st.text_input("Introduce tu Google API Key (Gratis)", type="password")
-    st.markdown("[Obtén tu clave gratis aquí](https://aistudio.google.com/)")
-    tipo_negocio = st.selectbox("Sector", ["Reciclaje Inmobiliario", "Retail", "Gastronomía", "Tecnología", "Otro"])
-    st.divider()
-    st.info("Esta versión usa Gemini 1.5 para analizar videos, audios y datos financieros.")
+    api_key = st.text_input("Introduce tu Google API Key", type="password")
+    st.info("Obtén tu clave gratis en Google AI Studio.")
+    tipo_negocio = st.selectbox("Sector", ["Reciclaje Inmobiliario", "Retail", "Gastronomía", "Otro"])
 
-# --- FUNCIONES DE APOYO ---
-def extraer_texto_word(file):
-    doc = Document(file)
-    return "\n".join([p.text for p in doc.paragraphs])
+# --- FUNCIONES DE LECTURA SEGURA ---
+def leer_archivo_texto(file):
+    """Lee archivos .docx o .txt de forma segura"""
+    if file.name.endswith('.docx'):
+        try:
+            doc = Document(file)
+            return "\n".join([p.text for p in doc.paragraphs])
+        except Exception:
+            return "Error leyendo Word."
+    else:
+        try:
+            return file.read().decode("utf-8")
+        except Exception:
+            return "Error leyendo TXT."
 
 def configurar_slide(slide, titulo_texto):
     title = slide.shapes.title
@@ -41,101 +48,91 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     st.subheader("📄 Documentos")
-    doc_file = st.file_uploader("Word o TXT", type=["docx", "txt"])
-    excel_file = st.file_uploader("Planilla Excel", type=["xlsx"])
+    doc_file = st.file_uploader("Subir Conversación (Word o TXT)", type=["docx", "txt"])
+    excel_file = st.file_uploader("Subir Planilla Excel", type=["xlsx"])
 
 with col2:
     st.subheader("🎬 Multimedia")
-    media_file = st.file_uploader("Audio o Video de la charla", type=["mp3", "wav", "m4a", "mp4", "mov"])
+    media_file = st.file_uploader("Audio o Video", type=["mp3", "wav", "m4a", "mp4"])
 
 with col3:
     st.subheader("✍️ Notas")
-    notas = st.text_area("Notas manuales:", height=200, placeholder="Pega aquí info extra...")
+    notas = st.text_area("Notas manuales:", height=200)
 
 # --- PROCESAMIENTO ---
-if st.button("🔥 GENERAR PROPUESTA INTEGRAL"):
+if st.button("🔥 GENERAR PROPUESTA"):
     if not api_key:
-        st.error("Introduce tu Google API Key en la barra lateral.")
+        st.error("Introduce tu Google API Key.")
     else:
         try:
             genai.configure(api_key=api_key)
-            # Usamos el modelo Flash que es excelente con archivos pesados
             model = genai.GenerativeModel('gemini-1.5-flash')
             
-            with st.spinner("Analizando todos tus archivos (esto puede tardar según el tamaño del video/audio)..."):
+            with st.spinner("Analizando información..."):
+                contenido_ia = []
+                texto_base = f"Proyecto: {tipo_negocio}\n"
                 
-                contenido_para_ia = []
-                
-                # 1. Procesar Texto y Notas
-                texto_base = f"Proyecto: {tipo_negocio}\nNotas: {notas}\n"
+                # 1. Procesar Documentos (Lógica Corregida)
                 if doc_file:
-                    texto_base += f"Contenido Documento: {extraer_texto_word(doc_file)}\n"
+                    texto_base += f"Contenido Documento: {leer_archivo_texto(doc_file)}\n"
+                
+                if notas:
+                    texto_base += f"Notas: {notas}\n"
+
+                # 2. Procesar Excel
                 if excel_file:
                     df = pd.read_excel(excel_file)
-                    texto_base += f"Datos Excel: {df.to_string()}\n"
+                    texto_base += f"Datos Financieros Excel:\n{df.to_string()}\n"
                 
-                contenido_para_ia.append(texto_base)
+                contenido_ia.append(texto_base)
 
-                # 2. Procesar Multimedia (Audio/Video)
+                # 3. Procesar Multimedia
+                tmp_path = None
                 if media_file:
-                    # Guardar temporalmente para que Gemini lo lea
                     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(media_file.name)[1]) as tmp:
                         tmp.write(media_file.read())
                         tmp_path = tmp.name
-                    
-                    # Subir a Google para procesamiento
-                    st.info("Subiendo archivo multimedia a la IA...")
                     g_file = genai.upload_file(path=tmp_path)
-                    contenido_para_ia.append(g_file)
+                    contenido_ia.append(g_file)
 
-                # 3. Prompt Maestro
+                # 4. Prompt
                 prompt = f"""
-                Analiza absolutamente toda la información adjunta (videos, audios, excel y texto).
-                Se trata de un proyecto de {tipo_negocio} en Uruguay.
-                
-                Genera el contenido detallado para una presentación comercial de 8 diapositivas.
-                Formato de respuesta: SLIDE | TÍTULO | CONTENIDO (en puntos)
-                
-                Debes incluir:
-                - Resumen de la conversación/video.
-                - Análisis financiero detallado (Inversión en USD).
-                - KPIs calculados: ROTE, ROI, Punto de Equilibrio y Cost to Income.
-                - Beneficios fiscales en Uruguay (Vivienda Promovida / COMAP).
-                - Escenarios de rentabilidad y conclusión.
+                Analiza la información de este proyecto de {tipo_negocio} en Uruguay.
+                Crea una presentación de 7 diapositivas profesional.
+                Formato: SLIDE | TÍTULO | CONTENIDO
+                Incluye: Resumen, Ubicación, Análisis de Inversión USD, KPIs (ROTE, ROI, Punto Equilibrio), 
+                Beneficios Fiscales Uruguay (Vivienda Promovida) y Conclusión.
                 """
 
-                # 4. Generar Respuesta
-                response = model.generate_content([prompt] + contenido_para_ia)
+                # 5. Generar
+                response = model.generate_content([prompt] + contenido_ia)
                 analisis = response.text
 
-                # 5. Crear PowerPoint
+                # 6. Crear PPTX
                 prs = Presentation()
                 for s_line in analisis.split("SLIDE"):
                     if "|" in s_line:
                         partes = s_line.split("|")
-                        titulo = partes[1].strip()
-                        cuerpo = partes[2].strip()
-                        
-                        slide = prs.slides.add_slide(prs.slide_layouts[1])
-                        configurar_slide(slide, titulo)
-                        tf = slide.placeholders[1].text_frame
-                        tf.word_wrap = True
-                        for p in cuerpo.split("* "):
-                            if len(p) > 2:
-                                tf.add_paragraph().text = "• " + p.strip()
+                        if len(partes) >= 3:
+                            titulo = partes[1].strip()
+                            cuerpo = partes[2].strip()
+                            
+                            slide = prs.slides.add_slide(prs.slide_layouts[1])
+                            configurar_slide(slide, titulo)
+                            tf = slide.placeholders[1].text_frame
+                            tf.word_wrap = True
+                            for p in cuerpo.split("* "):
+                                if len(p) > 2:
+                                    tf.add_paragraph().text = "• " + p.strip()
 
-                # 6. Descarga
+                # 7. Descarga
                 buf = io.BytesIO()
                 prs.save(buf)
                 buf.seek(0)
-                st.success("✅ ¡Análisis Multimodal Completo!")
-                st.download_button("📥 Descargar Presentación Pro", buf, "Propuesta_Inversor_Final.pptx")
+                st.success("✅ ¡Presentación Lista!")
+                st.download_button("📥 Descargar PowerPoint", buf, "Propuesta_Inversor.pptx")
                 
-                with st.expander("Ver Reporte Técnico"):
-                    st.write(analisis)
-                
-                # Limpiar archivo temporal
-                if media_file: os.remove(tmp_path)
+                if tmp_path: os.remove(tmp_path)
 
         except Exception as e:
             st.error(f"Se produjo un error: {e}")
